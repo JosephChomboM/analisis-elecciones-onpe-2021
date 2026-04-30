@@ -67,6 +67,13 @@ def build_interface_results(
         )
     )
     comparison_df["Participacion"] = (comparison_df["Participacion"] * 100).round(2)
+    participation_df = comparison_df[["Ubicacion", "Participacion"]].set_index("Ubicacion")
+    vote_share_df = pd.DataFrame(
+        {
+            "Categoria": ["Candidato 1", "Candidato 2", "Blancos", "Nulos"],
+            "Votos": [total_p1, total_p2, total_blancos, total_nulos],
+        }
+    )
 
     if total_p1 > total_p2:
         leading_text = "Candidato 1"
@@ -114,6 +121,8 @@ def build_interface_results(
     return {
         "chart_df": chart_df,
         "comparison_df": comparison_df,
+        "participation_df": participation_df,
+        "vote_share_df": vote_share_df,
         "flow_df": flow_df,
         "interpretation": interpretation,
         "summary": summary,

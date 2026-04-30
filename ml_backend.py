@@ -1,4 +1,6 @@
+import numpy as np
 import pandas as pd
+from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
@@ -7,10 +9,13 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     precision_score,
+    precision_recall_curve,
     recall_score,
+    roc_auc_score,
+    roc_curve,
     silhouette_score,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import learning_curve, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -51,8 +56,6 @@ def build_classifier() -> Pipeline:
             ("model", LogisticRegression(max_iter=1000)),
         ]
     )
-
-
 def run_part4_analysis(df: pd.DataFrame) -> dict[str, object]:
     ml_df = prepare_ml_dataset(df)
 
@@ -67,13 +70,24 @@ def run_part4_analysis(df: pd.DataFrame) -> dict[str, object]:
     classifier = build_classifier()
     classifier.fit(X_train, y_train)
     predictions = classifier.predict(X_test)
+    probabilities = classifier.predict_proba(X_test)[:, 1]
 
     confusion = confusion_matrix(y_test, predictions)
-    confusion_df = pd.DataFrame(
-        confusion,
-        index=["Real: Candidato 1", "Real: Candidato 2"],
-        columns=["Predicho: Candidato 1", "Predicho: Candidato 2"],
-    ).reset_index(names="Clase real")
+    fpr, tpr, _ = roc_curve(y_test, probabilities)
+    roc_df = pd.DataFrame({"fpr": fpr, "tpr": tpr})
+    roc_auc = roc_auc_score(y_test, probabilities)
+
+    feature_names = classifier.named_steps["preprocessor"].get_feature_names_out()
+    coefficients = classifier.named_steps["model"].coef_[0]
+    coefficient_df = pd.DataFrame(
+        {"feature": feature_names, "coefficient": coefficients}
+    )
+    coefficient_df["abs_coefficient"] = coefficient_df["coefficient"].abs()
+    top_coefficients = (
+        coefficient_df.sort_values("abs_coefficient", ascending=False)
+        .head(12)[["feature", "coefficient"]]
+        .assign(direction=lambda x: np.where(x["coefficient"] > 0, "Favorece Candidato 2", "Favorece Candidato 1"))
+    )
 
     department_df = (
         ml_df.groupby("DEPARTAMENTO")[
@@ -99,6 +113,16 @@ def run_part4_analysis(df: pd.DataFrame) -> dict[str, object]:
     kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
     department_df["CLUSTER"] = kmeans.fit_predict(cluster_features)
     silhouette = silhouette_score(cluster_features, department_df["CLUSTER"])
+    pca = PCA(n_components=2, random_state=42)
+    pca_coords = pca.fit_transform(cluster_features)
+    cluster_projection = pd.DataFrame(
+        {
+            "Departamento": department_df.index,
+            "PC1": pca_coords[:, 0],
+            "PC2": pca_coords[:, 1],
+            "Cluster": department_df["CLUSTER"].values,
+        }
+    )
 
     cluster_profile = (
         department_df.groupby("CLUSTER")[["PORC_P1", "PORC_P2", "PARTICIPACION"]]
@@ -141,7 +165,10 @@ def run_part4_analysis(df: pd.DataFrame) -> dict[str, object]:
     return {
         "accuracy": float(accuracy_score(y_test, predictions)),
         "baseline": float(ml_df["GANADOR_MESA"].mean()),
-        "confusion_df": confusion_df,
+        "confusion_matrix": confusion.tolist(),
+        "roc_df": roc_df,
+        "roc_auc": float(roc_auc),
+        "top_coefficients": top_coefficients,
         "cluster_profile": cluster_profile.rename(
             columns={
                 "CLUSTER": "Cluster",
@@ -151,6 +178,7 @@ def run_part4_analysis(df: pd.DataFrame) -> dict[str, object]:
             }
         ),
         "cluster_assignment": cluster_assignment,
+        "cluster_projection": cluster_projection,
         "silhouette": float(silhouette),
     }
 
@@ -171,6 +199,7 @@ def run_part5_analysis(df: pd.DataFrame) -> dict[str, object]:
 
     train_predictions = classifier.predict(X_train)
     test_predictions = classifier.predict(X_test)
+    test_probabilities = classifier.predict_proba(X_test)[:, 1]
 
     train_accuracy = accuracy_score(y_train, train_predictions)
     test_accuracy = accuracy_score(y_test, test_predictions)
@@ -196,11 +225,8 @@ def run_part5_analysis(df: pd.DataFrame) -> dict[str, object]:
         )
 
     confusion = confusion_matrix(y_test, test_predictions)
-    confusion_df = pd.DataFrame(
-        confusion,
-        index=["Real: Candidato 1", "Real: Candidato 2"],
-        columns=["Predicho: Candidato 1", "Predicho: Candidato 2"],
-    ).reset_index(names="Clase real")
+    precision_vals, recall_vals, _ = precision_recall_curve(y_test, test_probabilities)
+    pr_df = pd.DataFrame({"precision": precision_vals[:-1], "recall": recall_vals[:-1]})
 
     metrics_df = pd.DataFrame(
         [
@@ -218,6 +244,23 @@ def run_part5_analysis(df: pd.DataFrame) -> dict[str, object]:
             {"Conjunto": "Entrenamiento", "Registros": len(X_train), "Porcentaje": round(len(X_train) / len(ml_df) * 100, 2)},
             {"Conjunto": "Prueba", "Registros": len(X_test), "Porcentaje": round(len(X_test) / len(ml_df) * 100, 2)},
         ]
+    )
+
+    train_sizes, train_scores, test_scores = learning_curve(
+        build_classifier(),
+        ml_df[FEATURE_COLUMNS],
+        ml_df["GANADOR_MESA"],
+        cv=5,
+        scoring="accuracy",
+        train_sizes=np.linspace(0.2, 1.0, 5),
+        n_jobs=None,
+    )
+    learning_curve_df = pd.DataFrame(
+        {
+            "train_size": train_sizes,
+            "train_score": train_scores.mean(axis=1),
+            "test_score": test_scores.mean(axis=1),
+        }
     )
 
     diagnosis_df = pd.DataFrame(
@@ -247,9 +290,11 @@ def run_part5_analysis(df: pd.DataFrame) -> dict[str, object]:
     return {
         "split_df": split_df,
         "metrics_df": metrics_df,
-        "confusion_df": confusion_df,
+        "confusion_matrix": confusion.tolist(),
         "diagnosis_df": diagnosis_df,
         "limitations_df": limitations_df,
+        "pr_df": pr_df,
+        "learning_curve_df": learning_curve_df,
         "train_accuracy": float(train_accuracy),
         "test_accuracy": float(test_accuracy),
         "fit_status": fit_status,

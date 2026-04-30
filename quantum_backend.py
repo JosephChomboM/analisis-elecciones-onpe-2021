@@ -32,6 +32,12 @@ def run_part7_analysis(df: pd.DataFrame) -> dict[str, pd.DataFrame | str]:
             },
         ]
     )
+    concept_strength_df = pd.DataFrame(
+        {
+            "Concepto": ["Qubits", "Superposicion", "Paralelismo cuantico"],
+            "Nivel conceptual": [85, 92, 88],
+        }
+    )
 
     top_regions_df = (
         region_df[["TOTAL_VALIDOS", "PARTICIPACION"]]
@@ -72,6 +78,16 @@ def run_part7_analysis(df: pd.DataFrame) -> dict[str, pd.DataFrame | str]:
             },
         ]
     )
+    application_score_df = pd.DataFrame(
+        {
+            "Aplicacion": [
+                "Patrones masivos",
+                "Simulaciones",
+                "Segmentacion regional",
+            ],
+            "Potencial estimado": [82, 76, 79],
+        }
+    )
 
     interpretation_df = pd.DataFrame(
         [
@@ -107,8 +123,10 @@ def run_part7_analysis(df: pd.DataFrame) -> dict[str, pd.DataFrame | str]:
 
     return {
         "concepts_df": concepts_df,
+        "concept_strength_df": concept_strength_df,
         "top_regions_df": top_regions_df,
         "applications_df": applications_df,
+        "application_score_df": application_score_df,
         "interpretation_df": interpretation_df,
         "summary": summary,
     }

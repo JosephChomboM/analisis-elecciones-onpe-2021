@@ -1,6 +1,8 @@
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 import streamlit as st
 
 from interface_backend import build_interface_results, get_region_options
@@ -120,7 +122,7 @@ def get_part5_results(df: pd.DataFrame) -> dict[str, object]:
 
 
 @st.cache_data
-def get_part7_results(df: pd.DataFrame) -> dict[str, object]:
+def get_part7_results(df: pd.DataFrame, version: str = "v2") -> dict[str, object]:
     return run_part7_analysis(df)
 
 
@@ -298,6 +300,126 @@ def render_stat_cards(items: list[tuple[str, str]]) -> None:
                 """,
                 unsafe_allow_html=True,
             )
+
+
+def plot_confusion_matrix(confusion_matrix_values: list[list[int]], title: str) -> None:
+    fig, ax = plt.subplots(figsize=(5.4, 4.2))
+    sns.heatmap(
+        confusion_matrix_values,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        cbar=False,
+        xticklabels=["Pred C1", "Pred C2"],
+        yticklabels=["Real C1", "Real C2"],
+        ax=ax,
+    )
+    ax.set_title(title)
+    ax.set_xlabel("Prediccion")
+    ax.set_ylabel("Valor real")
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def plot_roc_curve(roc_df: pd.DataFrame, roc_auc: float) -> None:
+    fig, ax = plt.subplots(figsize=(5.6, 4.2))
+    ax.plot(roc_df["fpr"], roc_df["tpr"], color="#0f766e", linewidth=2.3, label=f"AUC = {roc_auc:.3f}")
+    ax.plot([0, 1], [0, 1], linestyle="--", color="#94a3b8", linewidth=1.2)
+    ax.set_title("Curva ROC")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.legend(loc="lower right")
+    ax.grid(alpha=0.2)
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def plot_coefficients(coefficient_df: pd.DataFrame) -> None:
+    sorted_df = coefficient_df.sort_values("coefficient")
+    fig, ax = plt.subplots(figsize=(8, 5.2))
+    colors = ["#ea580c" if value > 0 else "#0f766e" for value in sorted_df["coefficient"]]
+    ax.barh(sorted_df["feature"], sorted_df["coefficient"], color=colors)
+    ax.set_title("Coeficientes mas influyentes del modelo")
+    ax.set_xlabel("Peso del coeficiente")
+    ax.set_ylabel("Variable")
+    ax.grid(axis="x", alpha=0.2)
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def plot_cluster_projection(cluster_df: pd.DataFrame) -> None:
+    fig, ax = plt.subplots(figsize=(6.2, 4.8))
+    palette = {0: "#0f766e", 1: "#2563eb", 2: "#ea580c"}
+    for cluster_id, subset in cluster_df.groupby("Cluster"):
+        ax.scatter(
+            subset["PC1"],
+            subset["PC2"],
+            label=f"Cluster {cluster_id}",
+            s=52,
+            alpha=0.85,
+            color=palette.get(cluster_id, "#64748b"),
+        )
+    ax.set_title("Proyeccion PCA de clusters regionales")
+    ax.set_xlabel("Componente principal 1")
+    ax.set_ylabel("Componente principal 2")
+    ax.legend()
+    ax.grid(alpha=0.2)
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def plot_learning_curve(learning_curve_df: pd.DataFrame) -> None:
+    fig, ax = plt.subplots(figsize=(6.2, 4.4))
+    ax.plot(
+        learning_curve_df["train_size"],
+        learning_curve_df["train_score"],
+        marker="o",
+        linewidth=2.2,
+        color="#0f766e",
+        label="Entrenamiento",
+    )
+    ax.plot(
+        learning_curve_df["train_size"],
+        learning_curve_df["test_score"],
+        marker="o",
+        linewidth=2.2,
+        color="#ea580c",
+        label="Validacion",
+    )
+    ax.set_title("Curva de aprendizaje")
+    ax.set_xlabel("Tamano del conjunto de entrenamiento")
+    ax.set_ylabel("Accuracy")
+    ax.legend()
+    ax.grid(alpha=0.2)
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def plot_precision_recall_curve(pr_df: pd.DataFrame) -> None:
+    fig, ax = plt.subplots(figsize=(5.8, 4.4))
+    ax.plot(pr_df["recall"], pr_df["precision"], color="#2563eb", linewidth=2.2)
+    ax.set_title("Curva Precision-Recall")
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.grid(alpha=0.2)
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
+
+
+def plot_vote_share_pie(vote_share_df: pd.DataFrame, title: str) -> None:
+    fig, ax = plt.subplots(figsize=(5.2, 4.8))
+    colors = ["#0f766e", "#2563eb", "#f59e0b", "#ef4444"]
+    ax.pie(
+        vote_share_df["Votos"],
+        labels=vote_share_df["Categoria"],
+        autopct="%1.1f%%",
+        startangle=90,
+        colors=colors,
+        textprops={"fontsize": 9},
+    )
+    ax.set_title(title)
+    st.pyplot(fig, use_container_width=True)
+    plt.close(fig)
 
 
 def render_home() -> None:
@@ -619,38 +741,18 @@ def render_machine_learning(df: pd.DataFrame) -> None:
             y nivel de participacion.
             """
         )
-        confusion_chart = pd.DataFrame(
-            {
-                "Valor": [5987, 1472, 845, 8994],
-            },
-            index=[
-                "Real C1 / Pred C1",
-                "Real C1 / Pred C2",
-                "Real C2 / Pred C1",
-                "Real C2 / Pred C2",
-            ],
-        )
-        chart_col, table_col = st.columns([1.15, 0.85])
-        with chart_col:
-            confusion_chart = pd.DataFrame(
-                {
-                    "Valor": ml_results["confusion_df"][
-                        ["Predicho: Candidato 1", "Predicho: Candidato 2"]
-                    ]
-                    .to_numpy()
-                    .flatten()
-                    .tolist()
-                },
-                index=[
-                    "Real C1 / Pred C1",
-                    "Real C1 / Pred C2",
-                    "Real C2 / Pred C1",
-                    "Real C2 / Pred C2",
-                ],
+        col_1, col_2 = st.columns([1, 1])
+        with col_1:
+            plot_confusion_matrix(
+                ml_results["confusion_matrix"],
+                "Matriz de confusion",
             )
-            st.bar_chart(confusion_chart)
-        with table_col:
-            st.dataframe(style_table(ml_results["confusion_df"]), use_container_width=True)
+        with col_2:
+            plot_roc_curve(ml_results["roc_df"], ml_results["roc_auc"])
+        plot_coefficients(ml_results["top_coefficients"])
+        st.caption(
+            "Los coeficientes positivos favorecen la clase Candidato 2, mientras que los negativos favorecen la clase Candidato 1."
+        )
 
     with tab_2:
         st.subheader("Agrupamiento basico por departamento")
@@ -674,7 +776,6 @@ def render_machine_learning(df: pd.DataFrame) -> None:
                 ["% Promedio Candidato 1", "% Promedio Candidato 2"]
             ]
             st.bar_chart(cluster_profile_chart)
-            st.dataframe(style_table(ml_results["cluster_profile"]), use_container_width=True)
         with cluster_col_2:
             cluster_count_chart = (
                 ml_results["cluster_profile"][["Cluster", "Departamentos"]]
@@ -682,43 +783,21 @@ def render_machine_learning(df: pd.DataFrame) -> None:
                 .rename(columns={"Departamentos": "Cantidad"})
             )
             st.bar_chart(cluster_count_chart)
-            st.dataframe(
-                style_table(ml_results["cluster_assignment"].head(12)),
-                use_container_width=True,
-            )
+        plot_cluster_projection(ml_results["cluster_projection"])
 
     with tab_3:
         st.subheader("Evaluacion del modelo")
-        evaluation_df = pd.DataFrame(
-            [
-                {
-                    "Metrica": "Accuracy de clasificacion",
-                    "Resultado": f"{ml_results['accuracy'] * 100:.2f}%",
-                },
-                {
-                    "Metrica": "Silhouette del agrupamiento",
-                    "Resultado": f"{ml_results['silhouette']:.3f}",
-                },
-                {
-                    "Metrica": "Problema identificado",
-                    "Resultado": "Clasificacion binaria y agrupamiento no supervisado",
-                },
-            ]
-        )
         evaluation_chart = pd.DataFrame(
             {
                 "Valor": [
                     ml_results["accuracy"] * 100,
-                    ml_results["silhouette"],
+                    ml_results["roc_auc"] * 100,
+                    ml_results["silhouette"] * 100,
                 ]
             },
-            index=["Accuracy (%)", "Silhouette"],
+            index=["Accuracy (%)", "ROC AUC (%)", "Silhouette x100"],
         )
-        chart_col, table_col = st.columns([1.1, 0.9])
-        with chart_col:
-            st.bar_chart(evaluation_chart)
-        with table_col:
-            st.dataframe(style_table(evaluation_df), use_container_width=True)
+        st.bar_chart(evaluation_chart)
         st.markdown(
             """
             <div class="section-card">
@@ -736,31 +815,24 @@ def render_machine_learning(df: pd.DataFrame) -> None:
     with tab_4:
         st.subheader("Interpretacion de resultados")
         interpretation_df = pd.DataFrame(
-            [
-                {
-                    "Hallazgo": "Clasificacion",
-                    "Interpretacion": (
-                        f"El modelo obtuvo un accuracy de {ml_results['accuracy'] * 100:.2f}%, "
-                        "por lo que funciona como una aproximacion inicial de tendencia de voto."
-                    ),
-                },
-                {
-                    "Hallazgo": "Agrupamiento",
-                    "Interpretacion": (
-                        f"El silhouette score de {ml_results['silhouette']:.3f} sugiere que existen "
-                        "patrones regionales identificables, aunque no totalmente separados."
-                    ),
-                },
-                {
-                    "Hallazgo": "Aplicacion",
-                    "Interpretacion": (
-                        "La combinacion de clasificacion y clustering ayuda a detectar comportamientos "
-                        "recurrentes en las mesas y diferencias territoriales entre departamentos."
-                    ),
-                },
-            ]
+            []
         )
-        st.dataframe(style_table(interpretation_df), use_container_width=True)
+        st.markdown(
+            f"""
+            <div class="section-card">
+                <h3>Interpretacion de resultados</h3>
+                <p>
+                    El modelo de clasificacion alcanza un accuracy de {ml_results['accuracy'] * 100:.2f}%
+                    y una curva ROC con AUC de {ml_results['roc_auc']:.3f}, lo que indica una
+                    capacidad de discriminacion consistente para una prediccion simplificada.
+                    Ademas, el silhouette score de {ml_results['silhouette']:.3f} muestra que el
+                    agrupamiento regional encuentra estructuras utiles, aunque con cierta superposicion
+                    esperable en datos electorales reales.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def render_training_evaluation(df: pd.DataFrame) -> None:
@@ -807,11 +879,8 @@ def render_training_evaluation(df: pd.DataFrame) -> None:
             .set_index("Conjunto")
             .rename(columns={"Registros": "Cantidad"})
         )
-        chart_col, table_col = st.columns([1.1, 0.9])
-        with chart_col:
-            st.bar_chart(split_chart)
-        with table_col:
-            st.dataframe(style_table(part5_results["split_df"]), use_container_width=True)
+        st.bar_chart(split_chart)
+        st.caption("Se usa una division 80/20 para entrenar y validar el modelo con datos no vistos.")
 
     with tab_2:
         st.subheader("Resultados del modelo")
@@ -833,26 +902,12 @@ def render_training_evaluation(df: pd.DataFrame) -> None:
         result_col, confusion_col = st.columns([1.05, 0.95])
         with result_col:
             st.bar_chart(metrics_chart)
-            st.dataframe(style_table(part5_results["metrics_df"]), use_container_width=True)
         with confusion_col:
-            st.markdown("**Matriz de confusion del conjunto de prueba**")
-            confusion_chart = pd.DataFrame(
-                {
-                    "Valor": part5_results["confusion_df"][
-                        ["Predicho: Candidato 1", "Predicho: Candidato 2"]
-                    ]
-                    .to_numpy()
-                    .flatten()
-                    .tolist()
-                },
-                index=[
-                    "Real C1 / Pred C1",
-                    "Real C1 / Pred C2",
-                    "Real C2 / Pred C1",
-                    "Real C2 / Pred C2",
-                ],
+            plot_confusion_matrix(
+                part5_results["confusion_matrix"],
+                "Matriz de confusion en prueba",
             )
-            st.bar_chart(confusion_chart)
+        plot_precision_recall_curve(part5_results["pr_df"])
 
     with tab_3:
         st.subheader("Identificacion de sobreajuste o subajuste")
@@ -865,11 +920,11 @@ def render_training_evaluation(df: pd.DataFrame) -> None:
             },
             index=["Entrenamiento", "Prueba"],
         )
-        chart_col, table_col = st.columns([1.05, 0.95])
+        chart_col, curve_col = st.columns([0.95, 1.05])
         with chart_col:
             st.bar_chart(fit_chart)
-        with table_col:
-            st.dataframe(style_table(part5_results["diagnosis_df"]), use_container_width=True)
+        with curve_col:
+            plot_learning_curve(part5_results["learning_curve_df"])
         st.markdown(
             """
             <div class="section-card">
@@ -887,12 +942,23 @@ def render_training_evaluation(df: pd.DataFrame) -> None:
 
     with tab_4:
         st.subheader("Limitaciones del modelo en contexto electoral")
-        st.dataframe(style_table(part5_results["limitations_df"]), use_container_width=True)
+        for _, row in part5_results["limitations_df"].iterrows():
+            st.markdown(
+                f"""
+                <div class="section-card">
+                    <h3>{row['Limitacion']}</h3>
+                    <p>{row['Descripcion']}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def render_quantum_section(df: pd.DataFrame) -> None:
     render_hero()
     quantum_results = get_part7_results(df)
+    if "concept_strength_df" not in quantum_results or "application_score_df" not in quantum_results:
+        quantum_results = run_part7_analysis(df)
 
     st.markdown(
         """
@@ -922,17 +988,54 @@ def render_quantum_section(df: pd.DataFrame) -> None:
 
     with tab_1:
         st.subheader("Conceptos clave")
-        st.dataframe(style_table(quantum_results["concepts_df"]), use_container_width=True)
+        concept_cards = quantum_results["concepts_df"].to_dict("records")
+        concept_cols = st.columns(3)
+        for column, concept in zip(concept_cols, concept_cards):
+            with column:
+                st.markdown(
+                    f"""
+                    <div class="section-card">
+                        <h3>{concept['Concepto']}</h3>
+                        <p>{concept['Descripcion']}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        concept_chart = quantum_results["concept_strength_df"].set_index("Concepto")
+        st.bar_chart(concept_chart)
 
     with tab_2:
         st.subheader("Posible uso en datos electorales")
-        st.dataframe(style_table(quantum_results["applications_df"]), use_container_width=True)
-        st.markdown("**Regiones con mayor volumen de votos para dimensionar el problema**")
-        st.dataframe(style_table(quantum_results["top_regions_df"]), use_container_width=True)
+        app_cols = st.columns(3)
+        for column, app_row in zip(app_cols, quantum_results["applications_df"].to_dict("records")):
+            with column:
+                st.markdown(
+                    f"""
+                    <div class="section-card">
+                        <h3>{app_row['Aplicacion potencial']}</h3>
+                        <p>{app_row['Analisis']}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        st.bar_chart(quantum_results["application_score_df"].set_index("Aplicacion"))
+        region_chart = quantum_results["top_regions_df"].set_index("Departamento")[
+            ["Votos validos"]
+        ]
+        st.bar_chart(region_chart)
 
     with tab_3:
         st.subheader("Interpretacion")
-        st.dataframe(style_table(quantum_results["interpretation_df"]), use_container_width=True)
+        for row in quantum_results["interpretation_df"].to_dict("records"):
+            st.markdown(
+                f"""
+                <div class="section-card">
+                    <h3>{row['Hallazgo']}</h3>
+                    <p>{row['Interpretacion']}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         st.markdown(
             """
             <div class="section-card">
@@ -966,6 +1069,17 @@ def render_interface_design(df: pd.DataFrame) -> None:
         unsafe_allow_html=True,
     )
 
+    if "citizen_flow_step" not in st.session_state:
+        st.session_state["citizen_flow_step"] = 1
+
+    progress_labels = {
+        1: "Paso 1 de 3: Seleccion de region",
+        2: "Paso 2 de 3: Visualizacion de resultados",
+        3: "Paso 3 de 3: Interpretacion",
+    }
+    st.progress(st.session_state["citizen_flow_step"] / 3)
+    st.caption(progress_labels[st.session_state["citizen_flow_step"]])
+
     filter_col_1, filter_col_2 = st.columns([1.1, 0.9])
     with filter_col_1:
         selected_region = st.selectbox(
@@ -979,6 +1093,17 @@ def render_interface_design(df: pd.DataFrame) -> None:
         )
 
     interface_results = build_interface_results(df, selected_region, selected_candidate)
+
+    control_cols = st.columns(3)
+    with control_cols[0]:
+        if st.button("Paso 1: Seleccion", use_container_width=True):
+            st.session_state["citizen_flow_step"] = 1
+    with control_cols[1]:
+        if st.button("Paso 2: Resultados", use_container_width=True):
+            st.session_state["citizen_flow_step"] = 2
+    with control_cols[2]:
+        if st.button("Paso 3: Interpretacion", use_container_width=True):
+            st.session_state["citizen_flow_step"] = 3
 
     render_stat_cards(
         [
@@ -995,22 +1120,63 @@ def render_interface_design(df: pd.DataFrame) -> None:
         ]
     )
 
-    tab_1, tab_2, tab_3 = st.tabs(
-        ["Resultados", "Interpretacion", "User Flow"]
+    st.markdown(
+        """
+        <div class="section-card">
+            <h3>User Flow implementado</h3>
+            <p>
+                La persona primero selecciona una region o un candidato, luego revisa los resultados
+                visuales y finalmente accede a una interpretacion resumida del escenario consultado.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    with tab_1:
+    if st.session_state["citizen_flow_step"] >= 1:
+        st.markdown(
+            """
+            <div class="section-card">
+                <h3>Paso 1: Seleccion de region</h3>
+                <p>
+                    Usa los filtros superiores para definir el ambito geografico y el candidato
+                    que deseas consultar.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.session_state["citizen_flow_step"] == 1:
+            next_cols = st.columns([1, 1, 1])
+            with next_cols[1]:
+                if st.button("Continuar a resultados", use_container_width=True):
+                    st.session_state["citizen_flow_step"] = 2
+                    st.rerun()
+
+    if st.session_state["citizen_flow_step"] >= 2:
         st.subheader("Visualizacion clara de resultados")
-        results_col, detail_col = st.columns([1.2, 0.8])
+        results_col, detail_col = st.columns([1.1, 0.9])
         with results_col:
             st.bar_chart(interface_results["chart_df"])
         with detail_col:
-            st.dataframe(
-                style_table(interface_results["comparison_df"]),
-                use_container_width=True,
+            plot_vote_share_pie(
+                interface_results["vote_share_df"],
+                "Composicion de votos en la consulta",
             )
+        st.markdown("**Participacion por ubicacion en la vista actual**")
+        st.bar_chart(interface_results["participation_df"])
+        if st.session_state["citizen_flow_step"] == 2:
+            nav_cols = st.columns([1, 1, 1])
+            with nav_cols[0]:
+                if st.button("Volver a seleccion", use_container_width=True):
+                    st.session_state["citizen_flow_step"] = 1
+                    st.rerun()
+            with nav_cols[2]:
+                if st.button("Continuar a interpretacion", use_container_width=True):
+                    st.session_state["citizen_flow_step"] = 3
+                    st.rerun()
 
-    with tab_2:
+    if st.session_state["citizen_flow_step"] >= 3:
         st.subheader("Interpretacion de la consulta")
         st.markdown(
             f"""
@@ -1021,27 +1187,26 @@ def render_interface_design(df: pd.DataFrame) -> None:
             """,
             unsafe_allow_html=True,
         )
-
-    with tab_3:
-        st.subheader("User Flow propuesto")
-        st.dataframe(style_table(interface_results["flow_df"]), use_container_width=True)
-        flow_cols = st.columns(3)
-        flow_cards = [
-            ("Seleccion de region", "La persona elige el ambito geografico que desea consultar."),
-            ("Visualizacion de resultados", "La interfaz responde con graficos, metricas y comparaciones claras."),
-            ("Interpretacion", "Se resume el resultado principal para facilitar la comprension ciudadana."),
-        ]
-        for column, (title, text) in zip(flow_cols, flow_cards):
+        top_locations = interface_results["comparison_df"].head(3).to_dict("records")
+        location_cols = st.columns(3)
+        for column, location in zip(location_cols, top_locations):
             with column:
                 st.markdown(
                     f"""
                     <div class="section-card">
-                        <h3>{title}</h3>
-                        <p>{text}</p>
+                        <h3>{location['Ubicacion']}</h3>
+                        <p>Candidato 1: {int(location['Candidato 1']):,}</p>
+                        <p>Candidato 2: {int(location['Candidato 2']):,}</p>
+                        <p>Participacion: {location['Participacion']:.2f}%</p>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
+                        """.replace(",", "."),
+                        unsafe_allow_html=True,
                 )
+        back_cols = st.columns([1, 1, 1])
+        with back_cols[0]:
+            if st.button("Volver a resultados", use_container_width=True):
+                st.session_state["citizen_flow_step"] = 2
+                st.rerun()
 
 
 inject_styles()
